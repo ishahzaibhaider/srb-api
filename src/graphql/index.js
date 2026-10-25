@@ -5,7 +5,7 @@ const resolvers = require('./resolvers');
 
 // Starts Apollo Server and returns the Express middleware for POST /graphql
 async function createGraphQLMiddleware() {
-  const apollo = new ApolloServer({ typeDefs, resolvers });
+  const apollo = new ApolloServer({ typeDefs, resolvers, includeStacktraceInErrorResponses: false });
   await apollo.start();
   return expressMiddleware(apollo);
 }

@@ -1,0 +1,17 @@
+# Student dashboard: the student's details AND all of their bookings in ONE request.
+# POST /graphql with { "query": "...", "variables": { "regNo": "FA23-BAI-050" } }
+query StudentDashboard($regNo: String! = "FA23-BAI-050") {
+  student(regNo: $regNo) {
+    regNo
+    name
+    email
+    bookings {
+      slotId
+      roomCode
+      roomName
+      date
+      startHour
+      bookedAt
+    }
+  }
+}

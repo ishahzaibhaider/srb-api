@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Board Admin</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px 16px; color: #1d2433; }
+    input, button { font-size: 1rem; padding: 8px; }
+    #error { color: #c53030; } #result { color: #1f9d55; }
+    .status { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h2>Board admin</h2>
+  <form id="login">
+    <input id="key" type="password" placeholder="Admin key" required>
+    <button>Connect</button>
+  </form>
+  <p>Status: <span id="conn" class="status">not connected</span></p>
+  <p id="error"></p>
+  <form id="announceForm" hidden>
+    <input id="message" placeholder="Announcement for every board" size="40" maxlength="300" required>
+    <button>Announce</button>
+  </form>
+  <p id="result"></p>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    let admin;
+
+    $('login').onsubmit = e => {
+      e.preventDefault();
+      admin?.disconnect();
+      $('error').textContent = '';
+      admin = io('/admin', { auth: { adminKey: $('key').value } });
+      admin.on('connect', () => { $('conn').textContent = 'connected'; $('announceForm').hidden = false; });
+      admin.on('disconnect', reason => $('conn').textContent = `disconnected (${reason})`);
+      admin.on('connect_error', err => { // e.g. wrong key, refused by the namespace middleware
+        $('conn').textContent = 'refused';
+        $('error').textContent = err.message;
+        $('announceForm').hidden = true;
+      });
+    };
+
+    $('announceForm').onsubmit = async e => {
+      e.preventDefault();
+      const res = await admin.timeout(3000).emitWithAck('announce', $('message').value).catch(() => null);
+      if (!res) return $('error').textContent = 'No answer from the server';
+      if (!res.ok) return $('error').textContent = res.error;
+      $('result').textContent = `Sent to ${res.delivered} board(s)`;
+      $('message').value = '';
+    };
+  </script>
+</body>
+</html>

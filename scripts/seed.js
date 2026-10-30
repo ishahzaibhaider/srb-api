@@ -1,10 +1,13 @@
-// Inserts sample data: 4 rooms, 14 slots, 3 students. Run with: npm run seed
+// Inserts sample data: 4 rooms, 14 slots, 3 students + login accounts (3 students, 1 staff, 1 admin).
+// Run with: npm run seed   (demo passwords: students Student@123, staff Staff@1234, admin from .env)
 const mongoose = require('mongoose');
 const { mongoUri } = require('../src/config/env');
 const Room = require('../src/models/Room');
 const Slot = require('../src/models/Slot');
 const Student = require('../src/models/Student');
 const Booking = require('../src/models/Booking');
+const User = require('../src/models/User');
+const seedAdmin = require('./seed-admin');
 
 const rooms = [
   { roomCode: 'ROOM-01', name: 'Quiet Room A', building: 'Library', seats: 4 },
@@ -29,8 +32,8 @@ const students = [
 ];
 
 async function seed() {
-  await Promise.all([Room.deleteMany(), Slot.deleteMany(), Student.deleteMany(), Booking.deleteMany()]);
-  await Promise.all([Room.syncIndexes(), Slot.syncIndexes(), Student.syncIndexes(), Booking.syncIndexes()]);
+  await Promise.all([Room.deleteMany(), Slot.deleteMany(), Student.deleteMany(), Booking.deleteMany(), User.deleteMany()]);
+  await Promise.all([Room.syncIndexes(), Slot.syncIndexes(), Student.syncIndexes(), Booking.syncIndexes(), User.syncIndexes()]);
 
   await Room.insertMany(rooms);
   const seatsOf = Object.fromEntries(rooms.map(r => [r.roomCode, r.seats]));
@@ -39,7 +42,14 @@ async function seed() {
   await Slot.insertMany(slots);
   await Student.insertMany(students);
 
-  console.log(`Seeded ${rooms.length} rooms, ${slots.length} slots, ${students.length} students`);
+  // login accounts (User.create runs the bcrypt hashing hook)
+  for (const st of students) {
+    await User.create({ name: st.name, email: st.email, password: 'Student@123', role: 'student', regNo: st.regNo });
+  }
+  await User.create({ name: 'Booking Desk Staff', email: 'staff@srb.edu.pk', password: 'Staff@1234', role: 'staff' });
+  await seedAdmin();
+
+  console.log(`Seeded ${rooms.length} rooms, ${slots.length} slots, ${students.length} students, ${students.length + 2} user accounts`);
 }
 
 if (require.main === module) {

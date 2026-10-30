@@ -1,6 +1,6 @@
 # srb-api — Study Room Booking Service
 
-CSC337 Advanced Web Technologies, Assignment 1
+CSC337 Advanced Web Technologies, Assignment 1 + Assignment 2 (authentication and roles)
 
 **Student:** Syed Shahzaib Haider Rizvi  **Roll no:** FA23-BAI-050
 
@@ -22,12 +22,16 @@ cp .env.example .env        # then edit the values
 | `PORT` | HTTP port (default 3000) |
 | `MONGODB_URI` | MongoDB connection string, e.g. `mongodb://127.0.0.1:27017/srb` |
 | `ADMIN_KEY` | key the `/admin` Socket.IO namespace requires |
+| `JWT_SECRET` | secret used to sign login tokens (Assignment 2) |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | the admin account created by `npm run seed:admin` |
 
 **Option A: with your own MongoDB**
 
 ```bash
-npm run seed      # sample data: 4 rooms, 14 slots, 3 students
+npm run seed      # sample data: 4 rooms, 14 slots, 3 students + login accounts
+npm run seed:admin   # only the admin account (already included in npm run seed)
 npm start         # or: npm run dev (restarts on file changes)
+npm run smoke     # in a 2nd terminal: logs in and tests the auth + role rules
 ```
 
 **Option B: no MongoDB installed**
@@ -49,6 +53,64 @@ Then open:
 | http://localhost:3000/admin.html | admin console for announcements |
 
 ---
+
+# Assignment 2: Authentication and Authorization
+
+## Question 1: register and log in with JWT
+
+| Method | URL | Result |
+|---|---|---|
+| POST | `/api/v1/auth/register` `{ name, email, password, regNo }` | `201` the new user (always role **student**, never the password); `409` if the email or regNo already exists |
+| POST | `/api/v1/auth/login` `{ email, password }` | `200 { token, expiresIn: "15m", user }`; `401` for a wrong password or unknown email |
+| GET | `/api/v1/auth/me` | `200` the logged-in user; `401` without a valid token |
+
+- **User model** (`src/models/User.js`) has name, email, password, role (`student`, `staff`, `admin`) and regNo. The password is hashed with **bcrypt** before saving. `select: false` and `toJSON` keep the hash out of every response.
+- **Registration** always creates a `student`. A `role` field sent by the client is ignored. A matching Student record is created too, so the Assignment 1 booking code works unchanged.
+- **The admin** is created by `scripts/seed-admin.js` (`npm run seed:admin`) from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env`.
+- **The JWT** holds only the user id (`sub`) and `role`, and expires after **15 minutes**. It is signed with `JWT_SECRET` from `.env`.
+- **`requireAuth`** (`src/middleware/requireAuth.js`) reads `Authorization: Bearer <token>`. A missing, invalid or expired token gives **401** (`TOKEN_MISSING`, `TOKEN_INVALID`, `TOKEN_EXPIRED`).
+
+**Demo accounts** (created by `npm run seed`):
+
+| Account | Email | Password |
+|---|---|---|
+| Student 1 | fa23-bai-050@student.comsats.edu.pk (FA23-BAI-050) | Student@123 |
+| Student 2 | ayesha.khan@student.comsats.edu.pk (FA23-BCS-045) | Student@123 |
+| Staff | staff@srb.edu.pk | Staff@1234 |
+| Admin | value of `ADMIN_EMAIL` | value of `ADMIN_PASSWORD` |
+
+**Why we hash passwords.** If the database is ever leaked or read by someone who shouldn't see it, hashed passwords cannot simply be read and reused. Many people reuse the same password on other sites. bcrypt is slow on purpose and adds a random salt to every password, so guessing passwords from a stolen hash is very expensive. The server only ever compares hashes, so even the developers never know a user's real password.
+
+**Why a JWT must not contain the password.** A JWT is only *signed*, not *encrypted*: anyone who has the token can decode it (it is base64) and read everything inside. Tokens end up in browser storage, logs and proxies. A password inside would be exposed to all of them. The token only needs to say *who* the user is (id) and *what they may do* (role).
+
+## Question 2: role-based access
+
+All rules live in **one file**, `src/config/roles.js`. The `authorize` middleware runs after `requireAuth`: `allow(action)` checks the role, and `allowOwnRegNo` checks the regNo.
+
+| Action | student | staff | admin |
+|---|---|---|---|
+| View rooms and slots | yes | yes | yes |
+| Create or edit rooms and slots | no (403) | yes | yes |
+| Delete a room | no (403) | no (403) | yes |
+| Book or cancel a seat, see bookings | only for own regNo | any student | any student |
+
+- **No token → 401. Logged in but not allowed → 403.**
+- **Booking logic unchanged:** the Assignment 1 booking service is the same; only the checks in front of the routes are new.
+- **GraphQL:** the `/graphql` resolvers apply the same rules (they read the Bearer token from the request), so the REST rules cannot be bypassed through GraphQL. `/health` and the static board pages stay public.
+- **`scripts/smoke.js` (`npm run smoke`)** logs in as two students, staff and admin, then tests every rule. All 21 checks pass.
+- **Postman:** run the folder `0. Auth` first. It saves `adminToken` and `studentToken`, and the other requests then use the admin token. All 62 requests / 123 assertions pass.
+
+**Check — student 1 (FA23-BAI-050) trying to see student 2's (FA23-BCS-045) bookings gets 403:**
+
+![Student 1 gets 403 for student 2's bookings](docs/screenshots/student1-vs-student2-403.png)
+
+![npm run smoke output](docs/screenshots/smoke-test.png)
+
+**What could go wrong if we only checked the login and not the regNo.** Any logged-in student could change the regNo in the URL. They could then read other students' bookings (a privacy leak), cancel other students' seats, or book seats in someone else's name. This is called *Broken Object Level Authorization* (IDOR), the #1 risk in the OWASP API Top 10. Logging in proves *who* you are. Only the regNo check proves the data is *yours*.
+
+---
+
+# Assignment 1
 
 ## Question 1: project structure
 

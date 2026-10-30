@@ -7,7 +7,8 @@ const resolvers = require('./resolvers');
 async function createGraphQLMiddleware() {
   const apollo = new ApolloServer({ typeDefs, resolvers, includeStacktraceInErrorResponses: false });
   await apollo.start();
-  return expressMiddleware(apollo);
+  // the request's Authorization header is passed to the resolvers, which check login + role
+  return expressMiddleware(apollo, { context: async ({ req }) => ({ authHeader: req.get('Authorization') }) });
 }
 
 module.exports = { createGraphQLMiddleware };

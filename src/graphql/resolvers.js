@@ -6,8 +6,20 @@ const roomsService = require('../services/rooms.service');
 const slotsService = require('../services/slots.service');
 const studentsService = require('../services/students.service');
 const bookingsService = require('../services/bookings.service');
+const { userFromToken } = require('../middleware/requireAuth');
+const { can, canUseBookingsOf } = require('../config/roles');
 
-const CODES = { 400: 'BAD_USER_INPUT', 404: 'NOT_FOUND', 409: 'CONFLICT', 422: 'VALIDATION_FAILED' };
+const CODES = { 400: 'BAD_USER_INPUT', 401: 'UNAUTHENTICATED', 403: 'FORBIDDEN', 404: 'NOT_FOUND', 409: 'CONFLICT', 422: 'VALIDATION_FAILED' };
+
+// Same rules as the REST API (config/roles.js): log in first, then check the role / regNo
+async function allowed(ctx, action) {
+  const user = await userFromToken(ctx.authHeader);
+  if (!can(user.role, action)) throw ApiError.forbidden(`Your role (${user.role}) is not allowed to do this`, 'FORBIDDEN');
+}
+async function allowedForRegNo(ctx, regNo) {
+  const user = await userFromToken(ctx.authHeader);
+  if (!canUseBookingsOf(user, regNo)) throw ApiError.forbidden('Students can only access their own bookings', 'NOT_YOUR_REGNO');
+}
 
 // Service errors become GraphQL errors with the same code (SLOT_FULL, ALREADY_BOOKED, ...)
 async function run(fn) {
@@ -24,10 +36,13 @@ async function run(fn) {
 
 module.exports = {
   Query: {
-    rooms: () => run(() => roomsService.listRooms()),
-    slots: (_, { roomCode, date }) =>
-      run(async () => (await slotsService.listSlots({ roomCode, date, limit: 100 })).data),
-    student: (_, { regNo }) => run(async () => {
+    rooms: (_, __, ctx) => run(async () => { await allowed(ctx, 'rooms:view'); return roomsService.listRooms(); }),
+    slots: (_, { roomCode, date }, ctx) => run(async () => {
+      await allowed(ctx, 'slots:view');
+      return (await slotsService.listSlots({ roomCode, date, limit: 100 })).data;
+    }),
+    student: (_, { regNo }, ctx) => run(async () => {
+      await allowedForRegNo(ctx, regNo);
       try {
         return await studentsService.getStudent(regNo);
       } catch (err) {
@@ -37,8 +52,12 @@ module.exports = {
     })
   },
   Mutation: {
-    bookSlot: (_, { regNo, slotId }) => run(() => bookingsService.bookSlot(regNo, slotId)),
-    cancelBooking: (_, { regNo, slotId }) => run(async () => {
+    bookSlot: (_, { regNo, slotId }, ctx) => run(async () => {
+      await allowedForRegNo(ctx, regNo);
+      return bookingsService.bookSlot(regNo, slotId);
+    }),
+    cancelBooking: (_, { regNo, slotId }, ctx) => run(async () => {
+      await allowedForRegNo(ctx, regNo);
       await bookingsService.cancelBooking(regNo, slotId);
       return true;
     })

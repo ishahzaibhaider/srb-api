@@ -70,6 +70,10 @@ Then open:
 - **The JWT** holds only the user id (`sub`) and `role`, and expires after **15 minutes**. It is signed with `JWT_SECRET` from `.env`.
 - **`requireAuth`** (`src/middleware/requireAuth.js`) reads `Authorization: Bearer <token>`. A missing, invalid or expired token gives **401** (`TOKEN_MISSING`, `TOKEN_INVALID`, `TOKEN_EXPIRED`).
 
+**Check — log in, call `/me` with the token (200), then without a token (401):**
+
+![Login, /me 200, /me 401](docs/screenshots/login-me-401.png)
+
 **Demo accounts** (created by `npm run seed`):
 
 | Account | Email | Password |
